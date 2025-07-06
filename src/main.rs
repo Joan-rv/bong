@@ -4,6 +4,9 @@ use bevy::{
 };
 use std::f32::consts::{FRAC_PI_2, PI};
 
+const WALL_WIDTH: f32 = 10.;
+const WALL_OFFSET: f32 = 220.;
+
 const PADDLE_SPEED: f32 = 200.;
 const PADDLE_OFFSET: f32 = 200.;
 const PADDLE_SIZE: Vec2 = Vec2::new(10., 50.);
@@ -37,6 +40,9 @@ struct Paddle {
     down: KeyCode,
 }
 
+#[derive(Component)]
+struct Wall;
+
 fn setup(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -51,6 +57,7 @@ fn setup(
         Ball,
         Velocity(Vec2::new(BALL_SPEED, 0.)),
     ));
+
     let mut create_paddle = |x, up, down| {
         commands.spawn((
             Mesh2d(meshes.add(Rectangle::default())),
@@ -60,9 +67,23 @@ fn setup(
             Collider,
         ));
     };
-
     create_paddle(PADDLE_OFFSET, KeyCode::ArrowUp, KeyCode::ArrowDown);
     create_paddle(-PADDLE_OFFSET, KeyCode::KeyW, KeyCode::KeyS);
+
+    let mut create_wall = |x, y, width, height| {
+        commands.spawn((
+            Mesh2d(meshes.add(Rectangle::default())),
+            MeshMaterial2d(materials.add(Color::WHITE)),
+            Transform::from_xyz(x, y, 0.).with_scale(Vec2::new(width, height).extend(1.)),
+            Wall,
+            Collider,
+        ));
+    };
+    let wall_lenght = WALL_OFFSET * 2. + WALL_WIDTH;
+    create_wall(WALL_OFFSET, 0., WALL_WIDTH, wall_lenght);
+    create_wall(-WALL_OFFSET, 0., WALL_WIDTH, wall_lenght);
+    create_wall(0., WALL_OFFSET, wall_lenght, WALL_WIDTH);
+    create_wall(0., -WALL_OFFSET, wall_lenght, WALL_WIDTH);
 }
 
 fn apply_velocity(query: Query<(&mut Transform, &Velocity)>, time: Res<Time>) {
@@ -89,12 +110,13 @@ fn move_paddles(
 
 fn detect_collisions(
     ball: Single<(&Transform, &mut Velocity), With<Ball>>,
-    colliders: Query<&Transform, With<Collider>>,
+    colliders: Query<(&Transform, Option<&Paddle>), With<Collider>>,
 ) {
     let (ball_transform, mut ball_velocity) = ball.into_inner();
+
     let bounding_circle =
         BoundingCircle::new(ball_transform.translation.xy(), ball_transform.scale.x / 2.);
-    for transform in colliders {
+    for (transform, maybe_paddle) in colliders {
         let bounding_box = Aabb2d::new(transform.translation.xy(), transform.scale.xy() / 2.);
         if bounding_circle.intersects(&bounding_box) {
             enum Side {
@@ -107,11 +129,15 @@ fn detect_collisions(
                 Side::Right
             };
 
-            let angle = PI * rand::random::<f32>() - FRAC_PI_2;
-            **ball_velocity = match side {
-                Side::Right => Vec2::from_angle(angle) * BALL_SPEED,
-                Side::Left => Vec2::from_angle(angle + PI) * BALL_SPEED,
-            };
+            if maybe_paddle.is_some() {
+                let angle = PI * rand::random::<f32>() - FRAC_PI_2;
+                **ball_velocity = match side {
+                    Side::Right => Vec2::from_angle(angle) * BALL_SPEED,
+                    Side::Left => Vec2::from_angle(angle + PI) * BALL_SPEED,
+                };
+            } else {
+                ball_velocity.y *= -1.;
+            }
 
             break;
         }
