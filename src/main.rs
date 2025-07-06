@@ -13,6 +13,7 @@ const PADDLE_SIZE: Vec2 = Vec2::new(10., 50.);
 
 const BALL_SIZE: f32 = 20.;
 const BALL_SPEED: f32 = 150.;
+const WALL_LENGTH: f32 = WALL_OFFSET * 2. + WALL_WIDTH;
 
 fn main() {
     App::new()
@@ -79,11 +80,10 @@ fn setup(
             Collider,
         ));
     };
-    let wall_lenght = WALL_OFFSET * 2. + WALL_WIDTH;
-    create_wall(WALL_OFFSET, 0., WALL_WIDTH, wall_lenght);
-    create_wall(-WALL_OFFSET, 0., WALL_WIDTH, wall_lenght);
-    create_wall(0., WALL_OFFSET, wall_lenght, WALL_WIDTH);
-    create_wall(0., -WALL_OFFSET, wall_lenght, WALL_WIDTH);
+    create_wall(WALL_OFFSET, 0., WALL_WIDTH, WALL_LENGTH);
+    create_wall(-WALL_OFFSET, 0., WALL_WIDTH, WALL_LENGTH);
+    create_wall(0., WALL_OFFSET, WALL_LENGTH, WALL_WIDTH);
+    create_wall(0., -WALL_OFFSET, WALL_LENGTH, WALL_WIDTH);
 }
 
 fn apply_velocity(query: Query<(&mut Transform, &Velocity)>, time: Res<Time>) {
@@ -109,13 +109,13 @@ fn move_paddles(
 }
 
 fn detect_collisions(
-    ball: Single<(&Transform, &mut Velocity), With<Ball>>,
+    ball: Single<(&mut Transform, &mut Velocity), (With<Ball>, Without<Collider>)>,
     colliders: Query<(&Transform, Option<&Paddle>), With<Collider>>,
 ) {
-    let (ball_transform, mut ball_velocity) = ball.into_inner();
+    let (mut ball_transform, mut ball_velocity) = ball.into_inner();
+    let ball_radius = ball_transform.scale.x / 2.;
 
-    let bounding_circle =
-        BoundingCircle::new(ball_transform.translation.xy(), ball_transform.scale.x / 2.);
+    let bounding_circle = BoundingCircle::new(ball_transform.translation.xy(), ball_radius);
     for (transform, maybe_paddle) in colliders {
         let bounding_box = Aabb2d::new(transform.translation.xy(), transform.scale.xy() / 2.);
         if bounding_circle.intersects(&bounding_box) {
@@ -137,6 +137,11 @@ fn detect_collisions(
                 };
             } else {
                 ball_velocity.y *= -1.;
+                if ball_transform.translation.x - ball_radius < -WALL_OFFSET
+                    || ball_transform.translation.x + ball_radius > WALL_OFFSET
+                {
+                    ball_transform.translation = Vec3::ZERO;
+                }
             }
 
             break;
