@@ -6,14 +6,17 @@ use std::f32::consts::{FRAC_PI_2, PI};
 
 const WALL_WIDTH: f32 = 10.;
 const WALL_OFFSET: f32 = 220.;
+const WALL_LENGTH: f32 = WALL_OFFSET * 2. + WALL_WIDTH;
 
 const PADDLE_SPEED: f32 = 200.;
 const PADDLE_OFFSET: f32 = 200.;
 const PADDLE_SIZE: Vec2 = Vec2::new(10., 50.);
 
 const BALL_SIZE: f32 = 20.;
-const BALL_SPEED: f32 = 150.;
-const WALL_LENGTH: f32 = WALL_OFFSET * 2. + WALL_WIDTH;
+const BALL_SPEED: f32 = 200.;
+
+const TEXT_PADDING: Val = Val::Px(20.);
+const TEXT_SIZE: f32 = 36.;
 
 fn main() {
     App::new()
@@ -21,7 +24,12 @@ fn main() {
         .add_systems(Startup, setup)
         .add_systems(
             Update,
-            ((apply_velocity, move_paddles), detect_collisions).chain(),
+            (
+                (apply_velocity, move_paddles),
+                detect_collisions,
+                update_score,
+            )
+                .chain(),
         )
         .run();
 }
@@ -43,6 +51,9 @@ struct Paddle {
 
 #[derive(Component)]
 struct Wall;
+
+#[derive(Resource)]
+struct Score(u32, u32);
 
 fn setup(
     mut commands: Commands,
@@ -84,6 +95,23 @@ fn setup(
     create_wall(-WALL_OFFSET, 0., WALL_WIDTH, WALL_LENGTH);
     create_wall(0., WALL_OFFSET, WALL_LENGTH, WALL_WIDTH);
     create_wall(0., -WALL_OFFSET, WALL_LENGTH, WALL_WIDTH);
+
+    commands.spawn((
+        Text::new("0 - 0"),
+        TextFont {
+            font_size: TEXT_SIZE,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+        Node {
+            position_type: PositionType::Absolute,
+            top: TEXT_PADDING,
+            left: TEXT_PADDING,
+            ..default()
+        },
+    ));
+
+    commands.insert_resource(Score(0, 0));
 }
 
 fn apply_velocity(query: Query<(&mut Transform, &Velocity)>, time: Res<Time>) {
@@ -109,6 +137,7 @@ fn move_paddles(
 }
 
 fn detect_collisions(
+    mut scores: ResMut<Score>,
     ball: Single<(&mut Transform, &mut Velocity), (With<Ball>, Without<Collider>)>,
     colliders: Query<(&Transform, Option<&Paddle>), With<Collider>>,
 ) {
@@ -130,7 +159,7 @@ fn detect_collisions(
             };
 
             if maybe_paddle.is_some() {
-                let angle = PI * rand::random::<f32>() - FRAC_PI_2;
+                let angle = (PI * rand::random::<f32>() - FRAC_PI_2) / 2.;
                 **ball_velocity = match side {
                     Side::Right => Vec2::from_angle(angle) * BALL_SPEED,
                     Side::Left => Vec2::from_angle(angle + PI) * BALL_SPEED,
@@ -141,10 +170,18 @@ fn detect_collisions(
                     || ball_transform.translation.x + ball_radius > WALL_OFFSET
                 {
                     ball_transform.translation = Vec3::ZERO;
+                    match side {
+                        Side::Left => scores.0 += 1,
+                        Side::Right => scores.1 += 1,
+                    };
                 }
             }
 
             break;
         }
     }
+}
+
+fn update_score(scores: Res<Score>, mut text: Single<&mut Text>) {
+    text.0 = format!("{} - {}", scores.0, scores.1);
 }
