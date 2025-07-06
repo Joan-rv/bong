@@ -2,12 +2,14 @@ use bevy::{
     math::bounding::{Aabb2d, BoundingCircle, IntersectsVolume},
     prelude::*,
 };
+use std::f32::consts::{FRAC_PI_2, PI};
 
 const PADDLE_SPEED: f32 = 200.;
 const PADDLE_OFFSET: f32 = 200.;
 const PADDLE_SIZE: Vec2 = Vec2::new(10., 50.);
 
 const BALL_SIZE: f32 = 20.;
+const BALL_SPEED: f32 = 150.;
 
 fn main() {
     App::new()
@@ -47,7 +49,7 @@ fn setup(
         MeshMaterial2d(materials.add(Color::WHITE)),
         Transform::from_xyz(0., 0., 0.).with_scale(Vec2::splat(BALL_SIZE).extend(1.)),
         Ball,
-        Velocity(Vec2::new(100., 100.)),
+        Velocity(Vec2::new(BALL_SPEED, 0.)),
     ));
     let mut create_paddle = |x, up, down| {
         commands.spawn((
@@ -86,14 +88,31 @@ fn move_paddles(
 }
 
 fn detect_collisions(
-    mut ball: Single<(&Transform, &mut Velocity), With<Ball>>,
+    ball: Single<(&Transform, &mut Velocity), With<Ball>>,
     colliders: Query<&Transform, With<Collider>>,
 ) {
-    let bounding_circle = BoundingCircle::new(ball.0.translation.xy(), ball.0.scale.x / 2.);
+    let (ball_transform, mut ball_velocity) = ball.into_inner();
+    let bounding_circle =
+        BoundingCircle::new(ball_transform.translation.xy(), ball_transform.scale.x / 2.);
     for transform in colliders {
         let bounding_box = Aabb2d::new(transform.translation.xy(), transform.scale.xy() / 2.);
         if bounding_circle.intersects(&bounding_box) {
-            **ball.1 *= -1.;
+            enum Side {
+                Left,
+                Right,
+            }
+            let side = if ball_transform.translation.x < transform.translation.x {
+                Side::Left
+            } else {
+                Side::Right
+            };
+
+            let angle = PI * rand::random::<f32>() - FRAC_PI_2;
+            **ball_velocity = match side {
+                Side::Right => Vec2::from_angle(angle) * BALL_SPEED,
+                Side::Left => Vec2::from_angle(angle + PI) * BALL_SPEED,
+            };
+
             break;
         }
     }
